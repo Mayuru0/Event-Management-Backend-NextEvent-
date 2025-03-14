@@ -18,7 +18,7 @@ export const registerUser = async (req, res) => {
     contactNumber,
     role, 
     status,
-    
+    createdAt
   } = req.body;
 
   try {
