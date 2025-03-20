@@ -32,11 +32,9 @@ const UserSchema = new mongoose.Schema(
     address: {
       type: String,
     },
-
-    PostalCode:{
-      type:Number,
+    PostalCode: {
+      type: Number,
     },
-
     password: {
       type: String,
       required: true,
@@ -44,25 +42,33 @@ const UserSchema = new mongoose.Schema(
     role: {
       type: String,
       enum: ["admin", "organizer", "customer"],
-      default: roles?.customer || "customer", 
+      default: roles?.customer || "customer",
       required: true,
     },
     isLogin: {
       type: Boolean,
       default: false,
     },
-    status:{
-      type:String,
-      enum:["pending","verified","rejected"],
-      default:"pending"
+    status: {
+      type: String,
+      enum: ["pending", "verified", "rejected"],
+      default: "pending",
     },
     isVerified: {
       type: Boolean,
       default: false,
     },
   },
-  { timestamps: true } 
+  { timestamps: true }
 );
+
+// Middleware to set status to "verified" if the user is a customer
+UserSchema.pre("save", function (next) {
+  if (this.role === "customer") {
+    this.status = "verified";
+  }
+  next();
+});
 
 const User = mongoose.model("User", UserSchema);
 
