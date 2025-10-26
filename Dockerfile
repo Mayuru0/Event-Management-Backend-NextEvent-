@@ -6,7 +6,8 @@ WORKDIR /app
 
 # Copy only package.json first
 COPY package*.json ./
-
+RUN npm ci --only=production
+RUN npm install pm2 -g
 # Install dependencies inside the container
 RUN npm install
 
@@ -14,7 +15,7 @@ RUN npm install
 COPY . .
 
 # Expose the port your app runs on
-EXPOSE 3000
+EXPOSE 8000
 
-# Start the app
-CMD ["npm", "run", "dev"]
+# Start app with PM2
+CMD ["pm2-runtime", "start", "npm", "--", "--name", "next_event-backend", "--", "start"]
