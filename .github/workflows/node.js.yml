@@ -1,0 +1,45 @@
+name: Deploy next_event-backend using Docker (Self-hosted Runner)
+
+on:
+  push:
+    branches: [ "main" ]
+
+jobs:
+  deploy:
+    runs-on: self-hosted
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Create environment file
+        run: |
+          echo "PORT=${{ secrets.PORT }}" > .env
+          echo "BASE_URL=${{ secrets.BASE_URL }}" > .env
+          echo "JWT_SECRET=${{ secrets.JWT_SECRET }}" >> .env
+          echo "MONGO_URI=${{ secrets.MONGO_URI }}" >> .env
+          echo "PORT=${{ secrets.PORT }}" >> .env
+          echo "CLOUDINARY_CLOUD_NAME=${{ secrets.CLOUDINARY_CLOUD_NAME }}" >> .env
+          echo "CLOUDINARY_API_KEY=${{ secrets.CLOUDINARY_API_KEY }}" >> .env
+          echo "CLOUDINARY_API_SECRET=${{ secrets.CLOUDINARY_API_SECRET }}" >> .env
+          echo "STRIPE_SECRET_KEY=${{ secrets.STRIPE_SECRET_KEY }}" >> .env
+          echo "NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=${{ secrets.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY }}" >> .env
+
+      - name: Build Docker image
+        run: docker build -t next_event-backend .
+
+      - name: Stop existing container (if any)
+        run: |
+          docker stop next_event-backend || true
+          docker rm next_event-backend || true
+
+      - name: Run new container
+        run: |
+          docker run -d \
+            --name next_event-backend \
+            --env-file .env \
+            -p 8000:8000 \
+            next_event-backend
+
+      - name: Clean up old images
+        run: docker image prune -f
