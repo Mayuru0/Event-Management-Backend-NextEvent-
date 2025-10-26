@@ -40,13 +40,13 @@ jobs:
           echo "CLOUDINARY_API_SECRET=${{ secrets.CLOUDINARY_API_SECRET }}" >> .env
           echo "STRIPE_SECRET_KEY=${{ secrets.STRIPE_SECRET_KEY }}" >> .env
           echo "NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=${{ secrets.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY }}" >> .env
-    # - run: pm2 restart recipe_api
-    # - name: Restart or start app with PM2 process
-    #   run: |
-    #     if pm2 list | grep -q "next_event-backend"; then
-    #     pm2 restart next_event-backend
-    #     else
-    #     pm2 start npm --name "next_event-backend" -- run start --watch
-    #     fi
+    - run: pm2 restart recipe_api
+    - name: Restart or start app with PM2 process
+      run: |
+        if pm2 list | grep -q "next_event-backend"; then
+        pm2 restart next_event-backend
+        else
+        pm2 start npm --name "next_event-backend" -- run start --watch
+        fi
 
 
