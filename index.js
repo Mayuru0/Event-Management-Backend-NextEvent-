@@ -33,7 +33,7 @@ app.use(errorHandler);
 
 
 
-app.get('/', (req, res) => {
+app.get('/api/hello', (req, res) => {
     res.send('Hello World!');
 });
 
