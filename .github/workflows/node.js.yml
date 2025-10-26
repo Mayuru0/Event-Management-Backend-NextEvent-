@@ -1,20 +1,36 @@
-name: Deploy next_event-backend using Docker (Self-hosted Runner)
+# This workflow will do a clean installation of node dependencies, cache/restore them, build the source code and run tests across different versions of node
+# For more information see: https://docs.github.com/en/actions/automating-builds-and-tests/building-and-testing-nodejs
+
+name: Node.js CI
 
 on:
   push:
     branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
 
 jobs:
-  deploy:
+  build:
+
     runs-on: self-hosted
 
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+    strategy:
+      matrix:
+        node-version: [24.6.0]
+        # See supported Node.js release schedule at https://nodejs.org/en/about/releases/
 
-      - name: Create environment file
-        run: |
-          echo "PORT=${{ secrets.PORT }}" > .env
+    steps:
+    - uses: actions/checkout@v4
+    - name: Use Node.js ${{ matrix.node-version }}
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ matrix.node-version }}
+        cache: 'npm'
+    - run: npm ci
+    - run: npm run build --if-present
+    - run: |
+        touch .env
+        echo "PORT=${{ secrets.PORT }}" > .env
           echo "BASE_URL=${{ secrets.BASE_URL }}" > .env
           echo "JWT_SECRET=${{ secrets.JWT_SECRET }}" >> .env
           echo "MONGO_URI=${{ secrets.MONGO_URI }}" >> .env
@@ -24,25 +40,13 @@ jobs:
           echo "CLOUDINARY_API_SECRET=${{ secrets.CLOUDINARY_API_SECRET }}" >> .env
           echo "STRIPE_SECRET_KEY=${{ secrets.STRIPE_SECRET_KEY }}" >> .env
           echo "NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=${{ secrets.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY }}" >> .env
-
-      - name: Build Docker image
-        run: docker build -t next_event-backend .
-
-      - name: Stop existing container (if any)
-        run: |
-          docker stop next_event-backend || true
-          docker rm next_event-backend || true
-
-      - name: Run Docker container
-        run: |
-          docker stop next_event-backend || true
-          docker rm next_event-backend || true
-          docker run -d \
-            --name next_event-backend \
-            --env-file .env \
-            -p 4000:4000 \
-            next_event-backend
+    # - run: pm2 restart recipe_api
+    # - name: Restart or start app with PM2 process
+    #   run: |
+    #     if pm2 list | grep -q "recipe_api"; then
+    #     pm2 restart recipe_api
+    #     else
+    #     pm2 start npm --name "recipe_api" -- run start --watch
+    #     fi
 
 
-      - name: Clean up old images
-        run: docker image prune -f
