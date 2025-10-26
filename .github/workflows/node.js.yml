@@ -33,13 +33,16 @@ jobs:
           docker stop next_event-backend || true
           docker rm next_event-backend || true
 
-      - name: Run new container
+      - name: Run Docker container
         run: |
+          docker stop next_event-backend || true
+          docker rm next_event-backend || true
           docker run -d \
             --name next_event-backend \
             --env-file .env \
-            -p 8000:8000 \
+            -p 4000:4000 \
             next_event-backend
+
 
       - name: Clean up old images
         run: docker image prune -f
