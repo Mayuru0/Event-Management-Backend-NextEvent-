@@ -6,49 +6,38 @@ import cors from "cors";
 import errorHandler from './src/middlewares/error.middleware.js';
 import connectDB from './src/config/db.js';
 
-
 import eventRouter from "./src/routes/eventRoute.js";
 import contactRoute from './src/routes/contactRoute.js';
-
 import ticketRouter from './src/routes/ticketRoute.js';
-
 import userRoute from './src/routes/userRoute.js';
-import path from 'path';
 
+// Stripe webhook controller (needs raw body — must be registered before bodyParser)
+import { stripeWebhook } from './src/controllers/ticketController.js';
 
 dotenv.config();
 
 const app = express();
+
 app.use(cors());
 
-app.use(bodyParser.json());
+// Stripe webhook must receive the raw request body — register BEFORE bodyParser.json()
+app.post('/api/ticket/webhook', express.raw({ type: 'application/json' }), stripeWebhook);
 
+// Global JSON body parser (after webhook route)
+app.use(bodyParser.json());
 
 connectDB();
 app.use(errorHandler);
-
-
-// const __dirname = path.resolve();
-// app.use("/uploads", express.static(path.join(__dirname, "uploads")));
-
-
 
 app.get('/api/hello', (req, res) => {
     res.send('Hello World!');
 });
 
-//User routes
-app.use('/api/user', userRoute );
-
-
-
-app.use("/api/event", eventRouter);
-
-
-//contact routes
+// Routes
+app.use('/api/user', userRoute);
+app.use('/api/event', eventRouter);
 app.use('/api/contact', contactRoute);
-
-app.use("/api/ticket", ticketRouter);
+app.use('/api/ticket', ticketRouter);
 
 app.listen(PORT, () => {
     console.log(` 🚀 Server is up and running on port: ${PORT}`);

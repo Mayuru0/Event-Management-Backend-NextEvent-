@@ -4,9 +4,9 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
 export const addTicket = async (req, res) => {
   try {
-    const { userId, organizerId, name, profilePic, event_title, location, event_type, date, quantity, totalPrice, status } = req.body;
+    const { userId, organizerId, eventId, name, profilePic, event_title, location, event_type, date, quantity, totalPrice, status } = req.body;
     const newTicket = await Ticket.create({
-      userId, organizerId, name, profilePic, event_title, location, event_type, date, quantity, totalPrice, status
+      userId, organizerId, eventId, name, profilePic, event_title, location, event_type, date, quantity, totalPrice, status
     });
     res.status(201).json({ success: true, message: "Ticket created successfully", data: newTicket });
   } catch (error) {
@@ -133,7 +133,7 @@ export const createCheckoutSession = async (req, res) => {
       price_data: {
         currency: "usd",
         product_data: { name: title },
-        unit_amount: ticket_price * 100,
+        unit_amount: Math.round(ticket_price * 100), // convert dollars to cents
       },
       quantity,
     }];
@@ -141,13 +141,50 @@ export const createCheckoutSession = async (req, res) => {
       payment_method_types: ["card"],
       line_items: lineItems,
       mode: "payment",
-      success_url: `${process.env.FRONTEND_URL}/success`,
-      cancel_url: `${process.env.FRONTEND_URL}/cancel`,
+      success_url: `${process.env.FRONTEND_URL}/payment/success?session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${process.env.FRONTEND_URL}/payment/cancel`,
       metadata: { userId, ticketId },
     });
+
+    // Store session ID on the ticket for reference
+    await Ticket.findByIdAndUpdate(ticketId, { stripeSessionId: session.id });
+
     res.json({ url: session.url });
   } catch (err) {
     console.error("Error creating checkout session", err);
     res.status(500).json({ message: "Internal Server Error", error: err.message });
   }
+};
+
+// Stripe webhook — confirm payment and update ticket status
+export const stripeWebhook = async (req, res) => {
+  const sig = req.headers["stripe-signature"];
+  const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
+
+  let event;
+  try {
+    event = stripe.webhooks.constructEvent(req.body, sig, webhookSecret);
+  } catch (err) {
+    console.error("Webhook signature verification failed:", err.message);
+    return res.status(400).json({ message: `Webhook Error: ${err.message}` });
+  }
+
+  if (event.type === "checkout.session.completed") {
+    const session = event.data.object;
+    const { ticketId } = session.metadata || {};
+
+    if (ticketId) {
+      try {
+        await Ticket.findByIdAndUpdate(ticketId, {
+          status: "confirmed",
+          stripeSessionId: session.id,
+        });
+        console.log(`Ticket ${ticketId} confirmed via Stripe webhook`);
+      } catch (err) {
+        console.error("Failed to update ticket status:", err.message);
+      }
+    }
+  }
+
+  res.json({ received: true });
 };

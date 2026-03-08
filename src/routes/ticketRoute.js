@@ -9,10 +9,14 @@ import {
   getTicketsorganizerId,
   getOrganizerStats,
   createCheckoutSession,
+  stripeWebhook,
 } from "../controllers/ticketController.js";
 import authMiddleware from "../middlewares/authMiddleware.js";
 
 const ticketRouter = express.Router();
+
+// Stripe webhook — raw body required, no auth middleware
+ticketRouter.post("/webhook", express.raw({ type: "application/json" }), stripeWebhook);
 
 // Create
 ticketRouter.post("/add", authMiddleware, addTicket);
