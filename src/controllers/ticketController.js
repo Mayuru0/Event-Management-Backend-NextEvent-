@@ -1,4 +1,5 @@
 import Ticket from "../models/ticketModel.js";
+import Payment from "../models/paymentModel.js";
 import Stripe from "stripe";
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
@@ -133,7 +134,7 @@ export const createCheckoutSession = async (req, res) => {
       price_data: {
         currency: "usd",
         product_data: { name: title },
-        unit_amount: Math.round(ticket_price * 100), // convert dollars to cents
+        unit_amount: Math.round(ticket_price * 100),
       },
       quantity,
     }];
@@ -141,18 +142,88 @@ export const createCheckoutSession = async (req, res) => {
       payment_method_types: ["card"],
       line_items: lineItems,
       mode: "payment",
-      success_url: `${process.env.FRONTEND_URL}/payment/success?session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `${process.env.FRONTEND_URL}/payment/cancel`,
+      success_url: `${process.env.FRONTEND_URL}/success?session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${process.env.FRONTEND_URL}/cancel`,
       metadata: { userId, ticketId },
     });
 
-    // Store session ID on the ticket for reference
     await Ticket.findByIdAndUpdate(ticketId, { stripeSessionId: session.id });
 
     res.json({ url: session.url });
   } catch (err) {
     console.error("Error creating checkout session", err);
     res.status(500).json({ message: "Internal Server Error", error: err.message });
+  }
+};
+
+// Called by the frontend success page — verifies payment with Stripe and saves to DB
+export const verifyPayment = async (req, res) => {
+  try {
+    const { sessionId } = req.params;
+
+    if (!sessionId) {
+      return res.status(400).json({ success: false, message: "Session ID is required" });
+    }
+
+    // Idempotent — return existing record if already saved
+    const existing = await Payment.findOne({ stripeSessionId: sessionId });
+    if (existing) {
+      console.log("Payment already exists for session:", sessionId);
+      return res.status(200).json({ success: true, data: existing });
+    }
+
+    // Retrieve session from Stripe
+    let session;
+    try {
+      session = await stripe.checkout.sessions.retrieve(sessionId);
+    } catch (stripeErr) {
+      console.error("Stripe session retrieve failed:", stripeErr.message);
+      return res.status(400).json({ success: false, message: "Invalid Stripe session" });
+    }
+
+    console.log("Stripe session payment_status:", session.payment_status);
+
+    if (session.payment_status !== "paid") {
+      return res.status(400).json({ success: false, message: "Payment not completed yet" });
+    }
+
+    const { ticketId, userId } = session.metadata || {};
+    console.log("Metadata — ticketId:", ticketId, "userId:", userId);
+
+    if (!ticketId) {
+      return res.status(400).json({ success: false, message: "Ticket ID missing from session metadata" });
+    }
+
+    // Confirm the ticket
+    const updatedTicket = await Ticket.findByIdAndUpdate(
+      ticketId,
+      { status: "confirmed", stripeSessionId: sessionId },
+      { new: true }
+    );
+
+    if (!updatedTicket) {
+      console.error("Ticket not found for ticketId:", ticketId);
+      return res.status(404).json({ success: false, message: "Ticket not found" });
+    }
+
+    // Save payment record
+    const payment = await Payment.create({
+      ticketId: updatedTicket._id,
+      userId: userId || updatedTicket.userId,
+      stripeSessionId: sessionId,
+      amount: (session.amount_total || 0) / 100,
+      currency: session.currency || "usd",
+      paymentStatus: "success",
+      paymentMethod: "card",
+      eventTitle: updatedTicket.event_title || "",
+      customerName: updatedTicket.name || "",
+    });
+
+    console.log("Payment saved to DB:", payment._id);
+    res.status(201).json({ success: true, data: payment });
+  } catch (err) {
+    console.error("verifyPayment error:", err.message);
+    res.status(500).json({ success: false, message: err.message });
   }
 };
 
@@ -171,17 +242,31 @@ export const stripeWebhook = async (req, res) => {
 
   if (event.type === "checkout.session.completed") {
     const session = event.data.object;
-    const { ticketId } = session.metadata || {};
+    const { ticketId, userId } = session.metadata || {};
 
     if (ticketId) {
       try {
-        await Ticket.findByIdAndUpdate(ticketId, {
-          status: "confirmed",
-          stripeSessionId: session.id,
-        });
+        const updatedTicket = await Ticket.findByIdAndUpdate(
+          ticketId,
+          { status: "confirmed", stripeSessionId: session.id },
+          { new: true }
+        );
         console.log(`Ticket ${ticketId} confirmed via Stripe webhook`);
+
+        // Create payment record
+        await Payment.create({
+          ticketId,
+          userId: userId || updatedTicket?.userId,
+          stripeSessionId: session.id,
+          amount: (session.amount_total || 0) / 100,
+          currency: session.currency || "usd",
+          paymentStatus: "success",
+          paymentMethod: "card",
+          eventTitle: updatedTicket?.event_title || "",
+          customerName: updatedTicket?.name || "",
+        });
       } catch (err) {
-        console.error("Failed to update ticket status:", err.message);
+        console.error("Failed to update ticket or create payment:", err.message);
       }
     }
   }

@@ -10,6 +10,7 @@ import {
   getOrganizerStats,
   createCheckoutSession,
   stripeWebhook,
+  verifyPayment,
 } from "../controllers/ticketController.js";
 import authMiddleware from "../middlewares/authMiddleware.js";
 
@@ -36,5 +37,8 @@ ticketRouter.get("/:ticketId", authMiddleware, getTicketById);
 // Update & Delete
 ticketRouter.put("/:ticketId", authMiddleware, updateTicket);
 ticketRouter.delete("/delete/:ticketId", authMiddleware, deleteTicket);
+
+// Payment verification — no auth needed, Stripe session ID is secure proof of payment
+ticketRouter.post("/verify-payment/:sessionId", verifyPayment);
 
 export default ticketRouter;
