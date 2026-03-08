@@ -41,6 +41,13 @@ export const registerUser = async (req, res) => {
     } else if (role === roles.organizer || role === roles.customer) {
       assignedRole = role; // Allow only 'organizer' or 'customer' roles from input
     }
+   
+    if (!req.file) {
+  return res.status(400).json({
+    success: false,
+    message: "Profile picture is required",
+  });
+}
 
     // Create a new user
     const newUser = await User.create({

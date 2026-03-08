@@ -20,6 +20,19 @@ const storage = new CloudinaryStorage({
   },
 });
 
-const upload = multer({ storage });
+const upload = multer({
+  storage,
+  limits: {
+    fileSize: 5 * 1024 * 1024,    // 5 MB max file size
+    fieldSize: 25 * 1024 * 1024,  // 25 MB max field value (covers large image buffers)
+  },
+  fileFilter: (req, file, cb) => {
+    const allowed = /jpeg|jpg|png|gif|webp/;
+    const ext = allowed.test(file.originalname.toLowerCase());
+    const mime = allowed.test(file.mimetype);
+    if (ext && mime) return cb(null, true);
+    cb(new Error("Only image files (jpeg, jpg, png, gif, webp) are allowed"));
+  },
+});
 
 export { upload, cloudinary };
