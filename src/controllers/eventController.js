@@ -214,3 +214,20 @@ export const deleteEvent = async (req, res) => {
     });
   }
 };
+
+// Update event status only (approve / reject / archive)
+export const updateEventStatus = async (req, res) => {
+  try {
+    const { eventId } = req.params;
+    const { status } = req.body;
+    const validStatuses = ["Pending", "Published", "Archived", "Rejected"];
+    if (!validStatuses.includes(status)) {
+      return res.status(400).json({ success: false, message: "Invalid status value" });
+    }
+    const event = await Event.findByIdAndUpdate(eventId, { status }, { new: true });
+    if (!event) return res.status(404).json({ success: false, message: "Event not found" });
+    res.status(200).json({ success: true, data: event });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};

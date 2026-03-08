@@ -6,6 +6,7 @@ import {
   updateEvent,
   deleteEvent,
   getEventsByOrganizerid,
+  updateEventStatus,
 } from "../controllers/eventController.js";
 import authMiddleware from "../middlewares/authMiddleware.js";
 //import upload from "../utils/multerConfig.js"; 
@@ -30,5 +31,8 @@ eventRouter.put("/update/:eventId",authMiddleware,upload.single("image"), update
 
 // Delete an event
 eventRouter.delete("/delete/:eventId",authMiddleware, deleteEvent);
+
+// Update event status (approve/reject/archive)
+eventRouter.patch("/status/:eventId", authMiddleware, updateEventStatus);
 
 export default eventRouter;

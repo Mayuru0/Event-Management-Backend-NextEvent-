@@ -1,5 +1,6 @@
 import Ticket from "../models/ticketModel.js";
 import Payment from "../models/paymentModel.js";
+import Event from "../models/eventModel.js";
 import Stripe from "stripe";
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
@@ -206,6 +207,14 @@ export const verifyPayment = async (req, res) => {
       return res.status(404).json({ success: false, message: "Ticket not found" });
     }
 
+    // Decrement available tickets on the event
+    if (updatedTicket.eventId) {
+      await Event.findByIdAndUpdate(
+        updatedTicket.eventId,
+        { $inc: { quantity: -updatedTicket.quantity } }
+      );
+    }
+
     // Save payment record
     const payment = await Payment.create({
       ticketId: updatedTicket._id,
@@ -252,6 +261,14 @@ export const stripeWebhook = async (req, res) => {
           { new: true }
         );
         console.log(`Ticket ${ticketId} confirmed via Stripe webhook`);
+
+        // Decrement available tickets on the event
+        if (updatedTicket?.eventId) {
+          await Event.findByIdAndUpdate(
+            updatedTicket.eventId,
+            { $inc: { quantity: -updatedTicket.quantity } }
+          );
+        }
 
         // Create payment record
         await Payment.create({
