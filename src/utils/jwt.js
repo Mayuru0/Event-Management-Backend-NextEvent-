@@ -2,11 +2,11 @@ import jwt from "jsonwebtoken";
 import { JWT_SECRET, JWT_REFRESH_SECRET } from "./../config/env.js";
 
 const generateAccessToken = (payload) => {
-  return jwt.sign(payload, JWT_SECRET, { expiresIn: "15m" });
+  return jwt.sign(payload, JWT_SECRET, { expiresIn: "7m" });
 };
 
 const generateRefreshToken = (payload) => {
-  return jwt.sign(payload, JWT_REFRESH_SECRET, { expiresIn: "7d" });
+  return jwt.sign(payload, JWT_REFRESH_SECRET, { expiresIn: "21d" });
 };
 
 const getToken = (payload) => {
