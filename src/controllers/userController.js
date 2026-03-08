@@ -1,22 +1,21 @@
 import bcrypt from "bcrypt";
 import User from "../models/userModel.js";
-import jwt from "jsonwebtoken";
-import { JWT_SECRET } from "../config/env.js";
 import roles from "../config/constants.js";
 import generateToken from "../utils/generateToken.js";
+import { generateAccessToken, generateRefreshToken, verifyRefreshToken } from "../utils/jwt.js";
 
 // Register user
 export const registerUser = async (req, res) => {
-  const { 
+  const {
     name,
-    nic, 
+    nic,
     gender,
-    email, 
+    email,
     address,
     PostalCode,
     password,
     contactNumber,
-    role, 
+    role,
     status,
     createdAt
   } = req.body;
@@ -42,20 +41,26 @@ export const registerUser = async (req, res) => {
     } else if (role === roles.organizer || role === roles.customer) {
       assignedRole = role; // Allow only 'organizer' or 'customer' roles from input
     }
+   
+    if (!req.file) {
+  return res.status(400).json({
+    success: false,
+    message: "Profile picture is required",
+  });
+}
 
     // Create a new user
     const newUser = await User.create({
       name,
-      nic, 
+      nic,
       gender,
-      email, 
-      
+      email,
       contactNumber,
       address,
       PostalCode,
       profilePic: req.file ? req.file.path : null,
       password: hashPassword,
-      role: assignedRole, // Assign validated role
+      role: assignedRole,
       status,
       createdAt
     });
@@ -84,25 +89,83 @@ export const loginUser = async (req, res) => {
     if (!user) {
       return res.status(404).json({ message: "User not found" });
     }
-    
+
     // Compare the password
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) {
       return res.status(400).json({ message: "Invalid credentials" });
     }
 
-    // Generate JWT Token
-    const token = jwt.sign(
-      { id: user._id, email: user.email, name: user.full_name, role: user.role },
-      JWT_SECRET,
-      { expiresIn: "1d" }
-    );
+    const tokenPayload = { id: user._id, email: user.email, name: user.name, role: user.role };
 
-    const { password: removePassword, isDeleted, ...others } = user._doc;
-    return res.status(200).json({ message: "Login successful", user: others, token });
+    // Generate short-lived access token (15 minutes)
+    const accessToken = generateAccessToken(tokenPayload);
+
+    // Generate long-lived refresh token (7 days)
+    const refreshToken = generateRefreshToken({ id: user._id });
+
+    // Store refresh token in DB
+    user.refreshToken = refreshToken;
+    await user.save();
+
+    const { password: removePassword, isDeleted, refreshToken: removeRefresh, ...others } = user._doc;
+
+    return res.status(200).json({
+      message: "Login successful",
+      user: others,
+      token: accessToken,
+      refreshToken,
+    });
 
   } catch (err) {
     console.log(err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+// Refresh access token
+export const refreshAccessToken = async (req, res) => {
+  const { refreshToken } = req.body;
+
+  if (!refreshToken) {
+    return res.status(401).json({ success: false, message: "Refresh token required" });
+  }
+
+  const decoded = verifyRefreshToken(refreshToken);
+  if (!decoded) {
+    return res.status(403).json({ success: false, message: "Invalid or expired refresh token" });
+  }
+
+  try {
+    const user = await User.findById(decoded.id);
+    if (!user || user.refreshToken !== refreshToken) {
+      return res.status(403).json({ success: false, message: "Refresh token mismatch" });
+    }
+
+    const tokenPayload = { id: user._id, email: user.email, name: user.name, role: user.role };
+    const newAccessToken = generateAccessToken(tokenPayload);
+
+    return res.status(200).json({
+      success: true,
+      token: newAccessToken,
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+// Logout — clear refresh token
+export const logoutUser = async (req, res) => {
+  const { refreshToken } = req.body;
+
+  if (!refreshToken) {
+    return res.status(400).json({ success: false, message: "Refresh token required" });
+  }
+
+  try {
+    await User.findOneAndUpdate({ refreshToken }, { refreshToken: null });
+    return res.status(200).json({ success: true, message: "Logged out successfully" });
+  } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }
 };
@@ -127,7 +190,7 @@ export const getUsers = async (req, res) => {
 // Get user by ID
 export const getUser = async (req, res) => {
   try {
-    const user = await User.findById(req.params.UserId).select("-password");
+    const user = await User.findById(req.params.UserId).select("-password -refreshToken");
     res.status(200).json({
       success: true,
       data: user,
@@ -161,15 +224,18 @@ export const updateUserProfile = async (req, res, next) => {
     user.contactNumber = req.body.contactNumber || user.contactNumber;
     user.address = req.body.address || user.address;
     user.PostalCode = req.body.PostalCode || user.PostalCode;
-    user.profilePic = req.file ? req.file.path : user.profilePic; // Update profile picture if uploaded
-    user.status=req.body.status ||user.status;
-
+    user.profilePic = req.file ? req.file.path : user.profilePic;
+    user.status = req.body.status || user.status;
 
     if (req.body.password) {
       user.password = await bcrypt.hash(req.body.password, 10);
     }
 
     const updatedUser = await user.save();
+
+    // Issue a new access token with updated user info
+    const tokenPayload = { id: updatedUser._id, email: updatedUser.email, name: updatedUser.name, role: updatedUser.role };
+    const newAccessToken = generateAccessToken(tokenPayload);
 
     res.status(200).json({
       success: true,
@@ -184,9 +250,9 @@ export const updateUserProfile = async (req, res, next) => {
         contactNumber: updatedUser.contactNumber,
         profilePic: updatedUser.profilePic,
         role: updatedUser.role,
-        token: generateToken(updatedUser._id), // Generate new token
-        status:updatedUser.status
-
+        status: updatedUser.status,
+        isVerified: updatedUser.isVerified,
+        token: newAccessToken,
       },
       message: "User updated successfully",
     });
@@ -195,10 +261,9 @@ export const updateUserProfile = async (req, res, next) => {
   }
 };
 
-//only update status
+// Only update status
 export const updateUserStatus = async (req, res, next) => {
   try {
-    //console.log("Received request to update status:", req.body);  // Log request body
     const user = await User.findById(req.params.UserId);
 
     if (!user) {
@@ -222,21 +287,19 @@ export const updateUserStatus = async (req, res, next) => {
       message: "User updated successfully",
     });
   } catch (error) {
-    console.error("Error updating user status:", error);  // Log error
+    console.error("Error updating user status:", error);
     next(error);
   }
 };
 
 
-
-
 // Delete user
 export const deleteUser = async (req, res) => {
-  const { userId } = req.params; 
+  const { userId } = req.params;
 
   try {
     const deletedUser = await User.findByIdAndDelete(userId);
-  
+
     if (!deletedUser) {
       return res.status(404).json({
         success: false,

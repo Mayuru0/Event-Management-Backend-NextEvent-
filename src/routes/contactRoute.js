@@ -5,14 +5,13 @@ import { createContact, deleteContact, getContacts } from "../controllers/contac
 
 const contactRoute = express.Router();
 
-//post routes
-contactRoute.post('/create', authMiddleware, createContact);
+//post routes — open to guests (no auth required)
+contactRoute.post('/create', createContact);
 
-//get contact routes
+//get contact routes — protected (admin/organizer only)
 contactRoute.get('/get', authMiddleware, getContacts);
 
-
-//delete contact routes
+//delete contact routes — protected
 contactRoute.delete('/delete/:contactId', authMiddleware, deleteContact);
 
 
